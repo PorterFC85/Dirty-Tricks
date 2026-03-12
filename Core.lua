@@ -185,11 +185,7 @@ local function FindDelveCompanion()
   -- Known Delve companion names
   local companionNames = {
     "Brann Bronzebeard",
-    "Valeera Sanguinar", 
-    "Baelgrim",
-    "Drax'ar",
-    "Manny Sunglow",
-    "Auebry"
+    "Valeera Sanguinar"
   }
   
   -- Search group members for a Delve companion
