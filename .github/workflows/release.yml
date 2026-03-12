@@ -41,5 +41,5 @@ jobs:
       - name: Publish GitHub release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: Dirty-Tricks*.zip
+          files: Dirty-Tricks-*.zip
           generate_release_notes: true
