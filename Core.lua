@@ -10,7 +10,7 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 1.1.4
+Version: 2.0.1
 Date: March 1, 2026
 
 ================================================================================
@@ -476,7 +476,7 @@ Addon:SetScript("OnEvent", function(self, event, ...)
 end)
 
 -- Slash commands
-SLASH_SAR1 = "/sar"
+SLASH_SAR1 = "/dirtytricks"
 SlashCmdList["SAR"] = function(msg)
   local cmd, rest = msg:match("^(%S*)%s*(.-)$")
   local profileType = GetProfileTypeString()
@@ -585,7 +585,7 @@ SlashCmdList["SAR"] = function(msg)
       end
     end
   elseif cmd == "help" then
-    print(ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " Use " .. ColorizeText("/sar help", PROFILE_COLOR.r, PROFILE_COLOR.g, PROFILE_COLOR.b) .. " for commands")
+    print(ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " Use " .. ColorizeText("/dirtytricks help", PROFILE_COLOR.r, PROFILE_COLOR.g, PROFILE_COLOR.b) .. " for commands")
   end
 end
 

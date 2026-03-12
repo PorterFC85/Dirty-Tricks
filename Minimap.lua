@@ -98,7 +98,7 @@ loader:SetScript("OnEvent", function(self, event, addonName)
   button:SetScript("OnClick", function(self, buttonName)
     if buttonName == "RightButton" then
       DirtyTricks_SetMinimapIconVisible(false)
-      print("[Dirty Tricks] Minimap icon hidden. Use /sar minimap to show it again.")
+      print("[Dirty Tricks] Minimap icon hidden. Use /dirtytricks minimap to show it again.")
     else
       IconDB:OnClick(buttonName)
     end

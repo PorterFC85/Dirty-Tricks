@@ -1,4 +1,6 @@
 package-as: Dirty-Tricks
+enable-nolib-creation: yes
+manual-changelog: CHANGELOG.md
 
 externals:
   Libs/LibStub:

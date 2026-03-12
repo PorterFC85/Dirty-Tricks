@@ -14,7 +14,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 -- Get addon version - try modern API first, fall back to hardcoded
 local function GetAddonVersion()
-  local version = "1.1.2"
+  local version = "2.0.1"
   
   -- Try new C_AddOns namespace
   if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -167,7 +167,7 @@ local function ApplyElvUIStyle(frame)
   end
 end
 
--- Apply a simple Blizzard-like panel style (fallback)
+-- Blizzard-like panel style (fallback)
 local function ApplyBlizzardStyle(frame)
   for i = 1, select('#', frame:GetRegions()) do
     local region = select(i, frame:GetRegions())
@@ -221,9 +221,16 @@ local function CreateSettingsDialog()
   
   -- Version and Profile subtitle
   local subtitleText = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  subtitleText:SetPoint("TOPRIGHT", titleBg, "TOPRIGHT", -10, -8)
+  subtitleText:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -20, 6)
   subtitleText:SetText("v" .. (ADDON_VERSION or "0.1.0"))
-  subtitleText:SetTextColor(1, 1, 1)
+  subtitleText:SetTextColor(0.8, 0.8, 0.8)
+
+  -- Top-right close button (X)
+  local topCloseBtn = CreateFrame("Button", nil, dialog, "UIPanelCloseButton")
+  topCloseBtn:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -4, -4)
+  topCloseBtn:SetScript("OnClick", function()
+    dialog:Hide()
+  end)
 
   local function CreateDivider(yOffset)
     local line = dialog:CreateTexture(nil, "ARTWORK")
@@ -481,15 +488,6 @@ local function CreateSettingsDialog()
   clearBtn:SetScript("OnClick", function()
     tankInput:SetText("")
     SetPreferredTank(nil)
-  end)
-  
-  -- Close Button
-  local closeBtn = CreateFrame("Button", nil, dialog, "GameMenuButtonTemplate")
-  closeBtn:SetPoint("BOTTOMRIGHT", -20, 15)
-  closeBtn:SetSize(100, 24)
-  closeBtn:SetText("Close")
-  closeBtn:SetScript("OnClick", function()
-    dialog:Hide()
   end)
   
   -- Apply appropriate style: ELVUI if available, otherwise Blizzard-like
