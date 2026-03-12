@@ -1,4 +1,5 @@
 package-as: Dirty-Tricks
+curse-project-id: 1464507
 enable-nolib-creation: yes
 manual-changelog: CHANGELOG.md
 
