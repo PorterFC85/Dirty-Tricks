@@ -9,8 +9,7 @@
 ## X-License: All Rights Reserved
 ## X-Category: Rogue, Hunter
 ## X-Website: https://github.com/PorterFC85/dirty-tricks
-## X-Curse-Project-ID: Porter85
-## X-Wago-ID: your-wago-id
+## X-Curse-Project-ID: 1464507
 
 
 Libs\LibStub\LibStub.lua
