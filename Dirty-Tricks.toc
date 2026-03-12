@@ -4,8 +4,13 @@
 ## Notes: Automatically creates macros for Tricks of the Trade and Misdirection that target your tank
 ## Notes-Short: Auto Tricks/Misdirection to tank
 ## Author: PorterFC85
-## Version: 2.0.1
-## SavedVariablesPerCharacter: SARDB
+## Version: 1.1.0
+## SavedVariables: SARDB
+## X-License: All Rights Reserved
+## X-Category: Rogue, Hunter
+## X-Website: https://github.com/PorterFC85/dirty-tricks
+## X-Curse-Project-ID: Porter85
+## X-Wago-ID: your-wago-id
 
 
 Libs\LibStub\LibStub.lua
