@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.2 - 2026-03-12
+
+Release pipeline fix release.
+
+### Fixed
+- Removed dependency on CurseForge SVN externals during packaging to prevent release failures.
+- Updated release workflow configuration for current GitHub Actions runtime compatibility.
+- Corrected CurseForge project mapping in package metadata.
+
 ## 2.0.1 - 2026-03-12
 
 This is a re-release focused on reliability and polish.
