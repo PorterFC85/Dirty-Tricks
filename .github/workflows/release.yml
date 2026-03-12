@@ -1,22 +1,45 @@
-name: Release
+name: Build and Publish Release ZIP
 
 on:
   push:
     tags:
-      - '*'
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  release:
+  package-and-release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Package and Upload
-        uses: BigWigsMods/packager@v2
-        env:
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
-          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build addon zip
+        run: |
+          set -euo pipefail
+
+          ADDON_NAME="Dirty-Tricks"
+          TAG_NAME="${GITHUB_REF_NAME}"
+          VERSION="${TAG_NAME#v}"
+
+          rm -rf dist
+          mkdir -p "dist/${ADDON_NAME}"
+
+          cp "Dirty-Tricks.toc" "dist/${ADDON_NAME}/"
+          cp "Core.lua" "dist/${ADDON_NAME}/"
+          cp "Settings.lua" "dist/${ADDON_NAME}/"
+          cp "Profiles.lua" "dist/${ADDON_NAME}/"
+          cp "SecureButtons.lua" "dist/${ADDON_NAME}/"
+          cp "LICENSE" "dist/${ADDON_NAME}/"
+
+          cd dist
+          zip -r "../${ADDON_NAME}-${VERSION}.zip" "${ADDON_NAME}"
+
+      - name: Publish GitHub release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Dirty-Tricks-*.zip
+          generate_release_notes: true
