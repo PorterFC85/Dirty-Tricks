@@ -37,8 +37,11 @@ end
 
 -- Track the last selected tank to avoid printing the message on every update
 local lastSelectedTank = nil
+local wasInGroup = IsInGroup()
+local lastAutoAnnouncementTime = 0
 local addonLoadTime = GetTime()
 local STARTUP_GRACE_PERIOD = 1 -- suppress announcements for 1 second after load
+local AUTO_ANNOUNCE_COOLDOWN = 4 -- throttle auto tank-change announcements during roster churn
 
 -- Class color information
 local CLASS_COLORS = {
@@ -104,38 +107,68 @@ local function GetSpellInfoSafe(spellId, fallbackName)
   return fallbackName, nil
 end
 
+local function IsRaidUnitTank(unitId, raidIndex)
+  if UnitGroupRolesAssigned(unitId) == "TANK" then
+    return true
+  end
+
+  -- Fallback for raids where role assignments are incomplete.
+  if GetRaidRosterInfo and raidIndex then
+    local assignedRole = select(10, GetRaidRosterInfo(raidIndex))
+    if assignedRole == "MAINTANK" then
+      return true
+    end
+  end
+
+  return false
+end
+
 -- Find all tanks in current group (returns table of {name, unitId})
 local function FindTanks()
   local aliveTanks = {}
   local deadTanks = {}
+
+  local function AddTank(unitId)
+    local name = UnitName(unitId)
+    if not name or name == "" then return false end
+
+    local tankInfo = {
+      name = name,
+      unitId = unitId
+    }
+
+    -- Prioritize alive tanks, but keep dead tanks as backup
+    if UnitIsDead(unitId) or UnitIsGhost(unitId) then
+      table.insert(deadTanks, tankInfo)
+    else
+      table.insert(aliveTanks, tankInfo)
+    end
+
+    return (#aliveTanks + #deadTanks) >= 2
+  end
   
-  -- Determine group type
-  local groupType = (IsInRaid() and "raid") or (IsInGroup() and "party") or nil
-  if not groupType then return aliveTanks end
-  
-  -- Search for tanks - prioritize alive tanks but include dead ones
-  -- (macro conditionals like [@unit,help,nodead] will handle casting logic)
-  for i = 1, GetNumGroupMembers() do
-    local unitId = groupType .. i
-    if UnitExists(unitId) and UnitGroupRolesAssigned(unitId) == "TANK" then
-      local name = UnitName(unitId)
-      if name and name ~= "" then
-        local tankInfo = {
-          name = name,
-          unitId = unitId
-        }
-        
-        -- Prioritize alive tanks, but keep dead tanks as backup
-        if UnitIsDead(unitId) or UnitIsGhost(unitId) then
-          table.insert(deadTanks, tankInfo)
-        else
-          table.insert(aliveTanks, tankInfo)
-        end
-        
-        -- Stop after finding 2 tanks total
-        if (#aliveTanks + #deadTanks) >= 2 then break end
+  if IsInRaid() then
+    -- Search raid members and support both assigned roles and MAINTANK fallback.
+    for i = 1, GetNumGroupMembers() do
+      local unitId = "raid" .. i
+      if UnitExists(unitId) and IsRaidUnitTank(unitId, i) then
+        if AddTank(unitId) then break end
       end
     end
+  elseif IsInGroup() then
+    -- Party units do not include the player, so include player explicitly.
+    if UnitGroupRolesAssigned("player") == "TANK" then
+      AddTank("player")
+    end
+
+    for i = 1, GetNumSubgroupMembers() do
+      local unitId = "party" .. i
+      if UnitExists(unitId) and UnitGroupRolesAssigned(unitId) == "TANK" then
+        if AddTank(unitId) then break end
+      end
+    end
+  else
+    return aliveTanks
   end
   
   -- Merge: alive tanks first, then dead tanks
@@ -261,8 +294,12 @@ function UpdateMacros(shouldPrintMessage)
   end
   
   -- Only print messages if explicitly requested or if the selection changed (but not during startup grace period)
+  -- Auto announcements are throttled to reduce spam during rapid group reorganization.
   local isStartupPeriod = (GetTime() - addonLoadTime) < STARTUP_GRACE_PERIOD
-  local shouldPrintOutput = (shouldPrintMessage or (lastSelectedTank ~= currentSelectedTank and not isStartupPeriod)) and SARDB.announcements
+  local selectionChanged = (lastSelectedTank ~= currentSelectedTank)
+  local canAutoAnnounce = (GetTime() - lastAutoAnnouncementTime) >= AUTO_ANNOUNCE_COOLDOWN
+  local shouldAutoAnnounce = selectionChanged and not isStartupPeriod and canAutoAnnounce
+  local shouldPrintOutput = SARDB.announcements and (shouldPrintMessage or shouldAutoAnnounce)
   
   if shouldPrintOutput and currentSelectedTank then
     -- Show which tank is selected
@@ -312,6 +349,9 @@ function UpdateMacros(shouldPrintMessage)
     
     -- Update the last selected tank
     lastSelectedTank = currentSelectedTank
+    if not shouldPrintMessage then
+      lastAutoAnnouncementTime = GetTime()
+    end
   end
   
   for _, spellData in ipairs(MACRO_SPELLS) do
@@ -445,6 +485,20 @@ local function RequestUpdateMacros(shouldPrint)
   end)
 end
 
+local function HandleGroupStateTransition()
+  local inGroup = IsInGroup()
+
+  if wasInGroup and not inGroup then
+    -- Forced targets are group-scoped; clear them when returning to solo.
+    if SARDB.preferredTankName then
+      SARDB.preferredTankName = nil
+    end
+    lastSelectedTank = nil
+  end
+
+  wasInGroup = inGroup
+end
+
 DirtyTricksRequestUpdateMacros = RequestUpdateMacros
 
 Addon:RegisterEvent("GROUP_JOINED")
@@ -456,6 +510,8 @@ Addon:RegisterEvent("PLAYER_ALIVE")
 Addon:RegisterEvent("PLAYER_UNGHOST")
 Addon:RegisterEvent("UNIT_PET")
 Addon:SetScript("OnEvent", function(self, event, ...)
+  HandleGroupStateTransition()
+
   if event == "PLAYER_REGEN_ENABLED" then
     if updateQueued then
       RunQueuedUpdate()

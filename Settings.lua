@@ -65,9 +65,17 @@ end
 -- Function to get detected tanks (from Core.lua's FindTanks)
 local function GetDetectedTanks()
   local tanks = {}
-  local groupType = (IsInRaid() and "raid") or (IsInGroup() and "party") or nil
+
+  local function AddTank(unitId)
+    local name = UnitName(unitId)
+    if not name or name == "" then return end
+    table.insert(tanks, {
+      name = name,
+      class = select(2, UnitClass(unitId))
+    })
+  end
   
-  if not groupType then
+  if not IsInGroup() then
     -- Solo: check if hunter with pet
     local _, playerClass = UnitClass("player")
     if playerClass == "HUNTER" and UnitExists("pet") and not UnitIsDead("pet") then
@@ -81,15 +89,34 @@ local function GetDetectedTanks()
     end
     return tanks
   end
-  
-  for i = 1, GetNumGroupMembers() do
-    local unitId = groupType .. i
-    if UnitExists(unitId) and UnitGroupRolesAssigned(unitId) == "TANK" and not UnitIsDead(unitId) then
-      table.insert(tanks, {
-        name = UnitName(unitId),
-        class = select(2, UnitClass(unitId))
-      })
-      if #tanks >= 2 then break end
+
+  if IsInRaid() then
+    for i = 1, GetNumGroupMembers() do
+      local unitId = "raid" .. i
+      if UnitExists(unitId) and not UnitIsDead(unitId) then
+        local isTank = UnitGroupRolesAssigned(unitId) == "TANK"
+        if not isTank and GetRaidRosterInfo then
+          local assignedRole = select(10, GetRaidRosterInfo(i))
+          isTank = assignedRole == "MAINTANK"
+        end
+
+        if isTank then
+          AddTank(unitId)
+          if #tanks >= 2 then break end
+        end
+      end
+    end
+  else
+    if UnitGroupRolesAssigned("player") == "TANK" and not UnitIsDead("player") then
+      AddTank("player")
+    end
+
+    for i = 1, GetNumSubgroupMembers() do
+      local unitId = "party" .. i
+      if UnitExists(unitId) and UnitGroupRolesAssigned(unitId) == "TANK" and not UnitIsDead(unitId) then
+        AddTank(unitId)
+        if #tanks >= 2 then break end
+      end
     end
   end
   
