@@ -14,7 +14,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 -- Get addon version - try modern API first, fall back to hardcoded
 local function GetAddonVersion()
-  local version = "2.0.2"
+  local version = "2.0.3"
   
   -- Try new C_AddOns namespace
   if C_AddOns and C_AddOns.GetAddOnMetadata then

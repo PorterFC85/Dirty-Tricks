@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.3 - 2026-03-18
+
+This release improves target detection reliability and startup behavior.
+
+### Changed
+- Improved group tank detection behavior in mixed and raid-role edge cases.
+- Added throttling for automatic tank-change announcements during rapid roster updates.
+
+### Fixed
+- Settings dialog initialization now only runs for this addon's ADDON_LOADED event.
+- Prevented duplicate settings dialog creation on load.
+
 ## 2.0.2 - 2026-03-12
 
 Release pipeline fix release.

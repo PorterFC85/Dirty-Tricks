@@ -10,8 +10,8 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.2
-Date: March 1, 2026
+Version: 2.0.3
+Date: March 18, 2026
 
 ================================================================================
 Copyright (c) 2026 Dirty Tricks
