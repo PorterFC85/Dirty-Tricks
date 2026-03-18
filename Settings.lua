@@ -529,8 +529,11 @@ end
 
 -- Create the dialog after a short delay to ensure Core.lua loads first
 local delayedInit = CreateFrame("Frame")
-delayedInit:SetScript("OnEvent", function()
-  DirtyTricksSettingsDialog = CreateSettingsDialog()
+delayedInit:SetScript("OnEvent", function(self, event, addonName)
+  if addonName ~= ADDON_NAME then return end
+  if not DirtyTricksSettingsDialog then
+    DirtyTricksSettingsDialog = CreateSettingsDialog()
+  end
   delayedInit:UnregisterEvent("ADDON_LOADED")
 end)
 delayedInit:RegisterEvent("ADDON_LOADED")
