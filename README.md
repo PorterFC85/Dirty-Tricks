@@ -24,7 +24,7 @@ Dirty Tricks automatically creates and updates redirect macros for Rogues and Hu
 
 ## Version
 
-Current release: 2.0.3
+Current release: 2.0.4
 
 ## License
 

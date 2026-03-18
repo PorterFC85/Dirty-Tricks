@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.4 - 2026-03-18
+
+This release establishes a clean forward tag flow after the earlier 2.0.3 tag mismatch.
+
+### Changed
+- Bumped addon metadata and documentation version references from 2.0.3 to 2.0.4.
+
+### Release
+- Created a new release line for clean semantic version and tag progression.
+
 ## 2.0.3 - 2026-03-18
 
 This release improves target detection reliability and startup behavior.
