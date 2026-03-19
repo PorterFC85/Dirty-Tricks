@@ -10,7 +10,7 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.4
+Version: 2.0.5
 Date: March 18, 2026
 
 ================================================================================
@@ -34,14 +34,37 @@ if not SARDB then SARDB = { enabled = true, preferredTankName = nil } end
 if type(SARDB.announcements) ~= "boolean" then
   SARDB.announcements = true
 end
+if type(SARDB.preferRaidParityTank) ~= "boolean" then
+  SARDB.preferRaidParityTank = false
+end
 
--- Track the last selected tank to avoid printing the message on every update
-local lastSelectedTank = nil
 local wasInGroup = IsInGroup()
-local lastAutoAnnouncementTime = 0
+local wasInRaid = IsInRaid()
+local lastAutoAnnouncedContext = nil
 local addonLoadTime = GetTime()
 local STARTUP_GRACE_PERIOD = 1 -- suppress announcements for 1 second after load
-local AUTO_ANNOUNCE_COOLDOWN = 4 -- throttle auto tank-change announcements during roster churn
+local DEFAULT_UPDATE_DELAY = 0.35
+local RAID_SETTLE_DELAY = 1.2
+local READY_CHECK_UPDATE_DELAY = 0.2
+local raidSettleUntil = 0
+
+local function GetGroupAnnouncementContext()
+  if IsInRaid() then
+    return "raid"
+  end
+  if IsInGroup() then
+    return "party"
+  end
+  return "solo"
+end
+
+local function MarkRaidSettleWindow()
+  if IsInRaid() then
+    raidSettleUntil = GetTime() + RAID_SETTLE_DELAY
+  else
+    raidSettleUntil = 0
+  end
+end
 
 -- Class color information
 local CLASS_COLORS = {
@@ -123,12 +146,42 @@ local function IsRaidUnitTank(unitId, raidIndex)
   return false
 end
 
+local function GetRaidSubgroupForUnit(unitId, raidIndex)
+  if not IsInRaid() or not GetRaidRosterInfo then return nil end
+
+  local index = raidIndex
+  if not index and UnitInRaid then
+    index = UnitInRaid(unitId)
+  end
+  if not index then return nil end
+
+  local subgroup = select(3, GetRaidRosterInfo(index))
+  if type(subgroup) == "number" and subgroup > 0 then
+    return subgroup
+  end
+
+  return nil
+end
+
+local function IsSameRaidParity(subgroupA, subgroupB)
+  if not subgroupA or not subgroupB then return false end
+  return (subgroupA % 2) == (subgroupB % 2)
+end
+
 -- Find all tanks in current group (returns table of {name, unitId})
 local function FindTanks()
-  local aliveTanks = {}
-  local deadTanks = {}
+  local alivePreferredTanks = {}
+  local aliveOtherTanks = {}
+  local deadPreferredTanks = {}
+  local deadOtherTanks = {}
+  local useRaidParityPreference = IsInRaid() and SARDB.preferRaidParityTank
+  local playerRaidSubgroup = nil
 
-  local function AddTank(unitId)
+  if useRaidParityPreference then
+    playerRaidSubgroup = GetRaidSubgroupForUnit("player")
+  end
+
+  local function AddTank(unitId, raidIndex)
     local name = UnitName(unitId)
     if not name or name == "" then return false end
 
@@ -137,22 +190,38 @@ local function FindTanks()
       unitId = unitId
     }
 
-    -- Prioritize alive tanks, but keep dead tanks as backup
-    if UnitIsDead(unitId) or UnitIsGhost(unitId) then
-      table.insert(deadTanks, tankInfo)
-    else
-      table.insert(aliveTanks, tankInfo)
+    local matchesPlayerParity = false
+    if useRaidParityPreference and playerRaidSubgroup then
+      local tankSubgroup = GetRaidSubgroupForUnit(unitId, raidIndex)
+      matchesPlayerParity = IsSameRaidParity(playerRaidSubgroup, tankSubgroup)
     end
 
-    return (#aliveTanks + #deadTanks) >= 2
+    -- Prioritize alive tanks, but keep dead tanks as backup
+    if UnitIsDead(unitId) or UnitIsGhost(unitId) then
+      if matchesPlayerParity then
+        table.insert(deadPreferredTanks, tankInfo)
+      else
+        table.insert(deadOtherTanks, tankInfo)
+      end
+    else
+      if matchesPlayerParity then
+        table.insert(alivePreferredTanks, tankInfo)
+      else
+        table.insert(aliveOtherTanks, tankInfo)
+      end
+    end
+
+    local totalCount = #alivePreferredTanks + #aliveOtherTanks + #deadPreferredTanks + #deadOtherTanks
+    return totalCount >= 2
   end
   
   if IsInRaid() then
     -- Search raid members and support both assigned roles and MAINTANK fallback.
+    local shouldEarlyExit = not (useRaidParityPreference and playerRaidSubgroup)
     for i = 1, GetNumGroupMembers() do
       local unitId = "raid" .. i
       if UnitExists(unitId) and IsRaidUnitTank(unitId, i) then
-        if AddTank(unitId) then break end
+        if AddTank(unitId, i) and shouldEarlyExit then break end
       end
     end
   elseif IsInGroup() then
@@ -168,15 +237,26 @@ local function FindTanks()
       end
     end
   else
-    return aliveTanks
+    return alivePreferredTanks
   end
-  
-  -- Merge: alive tanks first, then dead tanks
-  for _, tank in ipairs(deadTanks) do
-    table.insert(aliveTanks, tank)
+
+  local orderedTanks = {}
+
+  -- Preserve alive-before-dead behavior while preferring player's raid parity when enabled.
+  for _, tank in ipairs(alivePreferredTanks) do
+    table.insert(orderedTanks, tank)
   end
-  
-  return aliveTanks
+  for _, tank in ipairs(aliveOtherTanks) do
+    table.insert(orderedTanks, tank)
+  end
+  for _, tank in ipairs(deadPreferredTanks) do
+    table.insert(orderedTanks, tank)
+  end
+  for _, tank in ipairs(deadOtherTanks) do
+    table.insert(orderedTanks, tank)
+  end
+
+  return orderedTanks
 end
 
 -- Check if player is in a Delve
@@ -294,12 +374,17 @@ function UpdateMacros(shouldPrintMessage)
   end
   
   -- Only print messages if explicitly requested or if the selection changed (but not during startup grace period)
-  -- Auto announcements are throttled to reduce spam during rapid group reorganization.
+  -- Auto announcements happen once per context transition: solo <-> party <-> raid.
   local isStartupPeriod = (GetTime() - addonLoadTime) < STARTUP_GRACE_PERIOD
-  local selectionChanged = (lastSelectedTank ~= currentSelectedTank)
-  local canAutoAnnounce = (GetTime() - lastAutoAnnouncementTime) >= AUTO_ANNOUNCE_COOLDOWN
-  local shouldAutoAnnounce = selectionChanged and not isStartupPeriod and canAutoAnnounce
+  local currentAnnouncementContext = GetGroupAnnouncementContext()
+  local contextChanged = (currentAnnouncementContext ~= lastAutoAnnouncedContext)
+  local shouldAutoAnnounce = contextChanged and not isStartupPeriod
   local shouldPrintOutput = SARDB.announcements and (shouldPrintMessage or shouldAutoAnnounce)
+
+  if shouldAutoAnnounce then
+    -- Mark this context as announced immediately so we only auto-announce once per transition.
+    lastAutoAnnouncedContext = currentAnnouncementContext
+  end
   
   if shouldPrintOutput and currentSelectedTank then
     -- Show which tank is selected
@@ -347,11 +432,6 @@ function UpdateMacros(shouldPrintMessage)
       print(msg)
     end
     
-    -- Update the last selected tank
-    lastSelectedTank = currentSelectedTank
-    if not shouldPrintMessage then
-      lastAutoAnnouncementTime = GetTime()
-    end
   end
   
   for _, spellData in ipairs(MACRO_SPELLS) do
@@ -461,6 +541,8 @@ end
 local updateTimer = nil
 local updateQueued = false
 local pendingPrint = false
+local pendingBypassRaidSettle = false
+local pendingDelay = nil
 
 local function RunQueuedUpdate()
   if not SARDB.enabled then return end
@@ -469,17 +551,43 @@ local function RunQueuedUpdate()
     return
   end
 
+  local now = GetTime()
+  if IsInRaid() and not pendingBypassRaidSettle and raidSettleUntil > now then
+    local waitTime = raidSettleUntil - now
+    updateTimer = C_Timer.After(waitTime, function()
+      updateTimer = nil
+      RunQueuedUpdate()
+    end)
+    return
+  end
+
   updateQueued = false
   local shouldPrint = pendingPrint
   pendingPrint = false
+  pendingBypassRaidSettle = false
   UpdateMacros(shouldPrint)
 end
 
-local function RequestUpdateMacros(shouldPrint)
+local function RequestUpdateMacros(shouldPrint, options)
+  options = options or {}
   pendingPrint = pendingPrint or shouldPrint
+  pendingBypassRaidSettle = pendingBypassRaidSettle or options.bypassRaidSettle
+
+  local requestedDelay = options.delay
+  if type(requestedDelay) ~= "number" or requestedDelay < 0 then
+    requestedDelay = DEFAULT_UPDATE_DELAY
+  end
+
+  if not pendingDelay or requestedDelay < pendingDelay then
+    pendingDelay = requestedDelay
+  end
+
   if updateTimer then return end
 
-  updateTimer = C_Timer.After(0.35, function()
+  local delay = pendingDelay or DEFAULT_UPDATE_DELAY
+  pendingDelay = nil
+
+  updateTimer = C_Timer.After(delay, function()
     updateTimer = nil
     RunQueuedUpdate()
   end)
@@ -487,16 +595,23 @@ end
 
 local function HandleGroupStateTransition()
   local inGroup = IsInGroup()
+  local inRaid = IsInRaid()
 
   if wasInGroup and not inGroup then
     -- Forced targets are group-scoped; clear them when returning to solo.
     if SARDB.preferredTankName then
       SARDB.preferredTankName = nil
     end
-    lastSelectedTank = nil
+  end
+
+  if inRaid and (not wasInRaid) then
+    MarkRaidSettleWindow()
+  elseif (not inRaid) and wasInRaid then
+    raidSettleUntil = 0
   end
 
   wasInGroup = inGroup
+  wasInRaid = inRaid
 end
 
 DirtyTricksRequestUpdateMacros = RequestUpdateMacros
@@ -509,8 +624,13 @@ Addon:RegisterEvent("PLAYER_REGEN_ENABLED")
 Addon:RegisterEvent("PLAYER_ALIVE")
 Addon:RegisterEvent("PLAYER_UNGHOST")
 Addon:RegisterEvent("UNIT_PET")
+Addon:RegisterEvent("READY_CHECK")
 Addon:SetScript("OnEvent", function(self, event, ...)
   HandleGroupStateTransition()
+
+  if event == "GROUP_JOINED" or event == "GROUP_ROSTER_UPDATE" then
+    MarkRaidSettleWindow()
+  end
 
   if event == "PLAYER_REGEN_ENABLED" then
     if updateQueued then
@@ -525,6 +645,12 @@ Addon:SetScript("OnEvent", function(self, event, ...)
     C_Timer.After(0.5, function()
       RequestUpdateMacros(false)
     end)
+    return
+  end
+
+  if event == "READY_CHECK" then
+    -- Ready check is often close to pull time; run a quick refresh without extra settle delay.
+    RequestUpdateMacros(false, { delay = READY_CHECK_UPDATE_DELAY, bypassRaidSettle = true })
     return
   end
 
@@ -595,6 +721,27 @@ SlashCmdList["SAR"] = function(msg)
     local tanks = FindTanks()
     print("  Tanks Found: " .. ColorizeText(tostring(#tanks), 1, 1, 0.8))
     print("  Preferred Tank: " .. ColorizeText(tostring(SARDB.preferredTankName or "None"), 1, 1, 0.8))
+    print("  Raid Parity Preference: " .. ColorizeText(tostring(SARDB.preferRaidParityTank), 1, 1, 0.8))
+
+    if IsInRaid() then
+      local playerSubgroup = GetRaidSubgroupForUnit("player")
+      if playerSubgroup then
+        local parityLabel = ((playerSubgroup % 2) == 0) and "even" or "odd"
+        print("  Player Raid Group: " .. ColorizeText(tostring(playerSubgroup) .. " (" .. parityLabel .. ")", 1, 1, 0.8))
+      else
+        print("  Player Raid Group: " .. ColorizeText("unknown", 1, 0.8, 0.3))
+      end
+
+      if #tanks > 0 then
+        print("  Tank Order:")
+        for i, tank in ipairs(tanks) do
+          local raidIndex = UnitInRaid and UnitInRaid(tank.unitId) or nil
+          local tankSubgroup = GetRaidSubgroupForUnit(tank.unitId, raidIndex)
+          local subgroupText = tankSubgroup and tostring(tankSubgroup) or "?"
+          print("    " .. i .. ". " .. ColorizeText(tank.name, 1, 1, 0.8) .. " (group " .. subgroupText .. ")")
+        end
+      end
+    end
     
     -- Check for Delve companion
     if IsInDelve() then

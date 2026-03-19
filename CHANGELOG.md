@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.5 - 2026-03-19
+
+This release improves raid/party stability, reduces chat spam, and adds better raid targeting controls.
+
+### Added
+- Added a default-off raid option to prefer tanks in the same odd/even raid subgroup parity as the player.
+- Added ready check triggered macro refresh support for near-immediate target updates before pull.
+- Added extended `/dirtytricks debug` output for raid subgroup parity and final tank ordering visibility.
+
+### Changed
+- Changed automatic chat notifications to fire once per context transition (`solo`, `party`, `raid`) instead of repeatedly during roster churn.
+- Added a short raid settle window before automatic macro refresh to reduce target thrash while raid groups are reorganizing.
+- Updated tank selection ordering to keep settings panel and runtime detection behavior aligned.
+
+### Fixed
+- Fixed settings tank list class coloring so each detected tank name uses its own class color.
+
 ## 2.0.4 - 2026-03-18
 
 This release establishes a clean forward tag flow after the earlier 2.0.3 tag mismatch.

@@ -14,7 +14,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 -- Get addon version - try modern API first, fall back to hardcoded
 local function GetAddonVersion()
-  local version = "2.0.4"
+  local version = "2.0.5"
   
   -- Try new C_AddOns namespace
   if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -35,6 +35,9 @@ local function EnsureSavedVars()
   end
   if type(SARDB.announcements) ~= "boolean" then
     SARDB.announcements = true
+  end
+  if type(SARDB.preferRaidParityTank) ~= "boolean" then
+    SARDB.preferRaidParityTank = false
   end
 end
 
@@ -64,15 +67,56 @@ end
 
 -- Function to get detected tanks (from Core.lua's FindTanks)
 local function GetDetectedTanks()
-  local tanks = {}
+  local alivePreferredTanks = {}
+  local aliveOtherTanks = {}
 
-  local function AddTank(unitId)
+  local function GetRaidSubgroupForUnit(unitId, raidIndex)
+    if not IsInRaid() or not GetRaidRosterInfo then return nil end
+
+    local index = raidIndex
+    if not index and UnitInRaid then
+      index = UnitInRaid(unitId)
+    end
+    if not index then return nil end
+
+    local subgroup = select(3, GetRaidRosterInfo(index))
+    if type(subgroup) == "number" and subgroup > 0 then
+      return subgroup
+    end
+
+    return nil
+  end
+
+  local function IsSameRaidParity(subgroupA, subgroupB)
+    if not subgroupA or not subgroupB then return false end
+    return (subgroupA % 2) == (subgroupB % 2)
+  end
+
+  local useRaidParityPreference = IsInRaid() and SARDB.preferRaidParityTank
+  local playerRaidSubgroup = nil
+  if useRaidParityPreference then
+    playerRaidSubgroup = GetRaidSubgroupForUnit("player")
+  end
+
+  local function AddTank(unitId, raidIndex)
     local name = UnitName(unitId)
     if not name or name == "" then return end
-    table.insert(tanks, {
+    local tank = {
       name = name,
       class = select(2, UnitClass(unitId))
-    })
+    }
+
+    local matchesPlayerParity = false
+    if useRaidParityPreference and playerRaidSubgroup then
+      local tankSubgroup = GetRaidSubgroupForUnit(unitId, raidIndex)
+      matchesPlayerParity = IsSameRaidParity(playerRaidSubgroup, tankSubgroup)
+    end
+
+    if matchesPlayerParity then
+      table.insert(alivePreferredTanks, tank)
+    else
+      table.insert(aliveOtherTanks, tank)
+    end
   end
   
   if not IsInGroup() then
@@ -81,16 +125,17 @@ local function GetDetectedTanks()
     if playerClass == "HUNTER" and UnitExists("pet") and not UnitIsDead("pet") then
       local petName = UnitName("pet")
       if petName then
-        table.insert(tanks, {
+        table.insert(alivePreferredTanks, {
           name = petName,
           class = "HUNTER"  -- Use pet's class which appears as hunter
         })
       end
     end
-    return tanks
+    return alivePreferredTanks
   end
 
   if IsInRaid() then
+    local shouldEarlyExit = not (useRaidParityPreference and playerRaidSubgroup)
     for i = 1, GetNumGroupMembers() do
       local unitId = "raid" .. i
       if UnitExists(unitId) and not UnitIsDead(unitId) then
@@ -101,8 +146,10 @@ local function GetDetectedTanks()
         end
 
         if isTank then
-          AddTank(unitId)
-          if #tanks >= 2 then break end
+          AddTank(unitId, i)
+          if shouldEarlyExit and (#alivePreferredTanks + #aliveOtherTanks) >= 2 then
+            break
+          end
         end
       end
     end
@@ -115,11 +162,19 @@ local function GetDetectedTanks()
       local unitId = "party" .. i
       if UnitExists(unitId) and UnitGroupRolesAssigned(unitId) == "TANK" and not UnitIsDead(unitId) then
         AddTank(unitId)
-        if #tanks >= 2 then break end
+        if (#alivePreferredTanks + #aliveOtherTanks) >= 2 then break end
       end
     end
   end
-  
+
+  local tanks = {}
+  for _, tank in ipairs(alivePreferredTanks) do
+    table.insert(tanks, tank)
+  end
+  for _, tank in ipairs(aliveOtherTanks) do
+    table.insert(tanks, tank)
+  end
+
   return tanks
 end
 
@@ -141,6 +196,11 @@ local function GetClassColor(class)
     WARRIOR = { r = 0.78, g = 0.61, b = 0.43 }
   }
   return classColors[class] or { r = 1, g = 1, b = 1 }
+end
+
+local function ColorizeNameByClass(name, class)
+  local color = GetClassColor(class)
+  return string.format("|cff%02x%02x%02x%s|r", color.r * 255, color.g * 255, color.b * 255, name)
 end
 
 -- Detect if ElvUI is present
@@ -328,21 +388,43 @@ local function CreateSettingsDialog()
   announcementsLabel:SetText("Enable Chat Announcements")
   announcementsLabel:SetTextColor(1, 1, 1, 1)
 
-  CreateDivider(-110)
+  local UpdateTanksDisplay
+  local UpdateQuickSelectButtons
+
+  local parityCheck = CreateFrame("CheckButton", nil, dialog, "UICheckButtonTemplate")
+  parityCheck:SetPoint("TOPLEFT", 20, -125)
+  parityCheck:SetChecked(SARDB.preferRaidParityTank)
+  parityCheck:SetScript("OnClick", function(self)
+    SARDB.preferRaidParityTank = self:GetChecked()
+    if DirtyTricksRequestUpdateMacros then
+      DirtyTricksRequestUpdateMacros(false)
+    elseif UpdateMacros then
+      UpdateMacros(false)
+    end
+    UpdateTanksDisplay()
+    UpdateQuickSelectButtons()
+  end)
+
+  local parityLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  parityLabel:SetPoint("LEFT", parityCheck, "RIGHT", 8, 0)
+  parityLabel:SetText("Raid: Prefer same odd/even group tank")
+  parityLabel:SetTextColor(1, 1, 1, 1)
+
+  CreateDivider(-135)
   
   -- Profile and Detected Tanks display
   local profileLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  profileLabel:SetPoint("TOPLEFT", 20, -130)
+  profileLabel:SetPoint("TOPLEFT", 20, -155)
   profileLabel:SetText("Profile: " .. UnitClass("player") .. " - " .. GetProfileType())
   profileLabel:SetTextColor(0.8, 1.0, 0.8)
   
   local tanksLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  tanksLabel:SetPoint("TOPLEFT", 20, -150)
+  tanksLabel:SetPoint("TOPLEFT", 20, -175)
   tanksLabel:SetText("Detected Tanks:")
   tanksLabel:SetTextColor(0.9, 0.9, 0.9)
     -- Detected tanks frame container
   local tanksFrame = CreateFrame("Frame", nil, dialog)
-  tanksFrame:SetPoint("TOPLEFT", 20, -170)
+  tanksFrame:SetPoint("TOPLEFT", 20, -195)
   tanksFrame:SetSize(300, 60)
     -- Update label based on profile type
   local function UpdateTanksLabel()
@@ -356,11 +438,11 @@ local function CreateSettingsDialog()
   
   -- Detected Tanks display (with class colors)
   local tanksDisplay = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  tanksDisplay:SetPoint("TOPLEFT", 150, -150)
+  tanksDisplay:SetPoint("TOPLEFT", 150, -175)
   tanksDisplay:SetMaxLines(2)
   
   -- Update tanks display function
-  local function UpdateTanksDisplay()
+  UpdateTanksDisplay = function()
     local tanks = GetDetectedTanks()
     if #tanks == 0 then
       tanksDisplay:SetText("None detected")
@@ -368,28 +450,25 @@ local function CreateSettingsDialog()
     else
       local tankText = ""
       for i, tank in ipairs(tanks) do
-        local color = GetClassColor(tank.class)
-        tankText = tankText .. (i > 1 and ", " or "") .. tank.name
+        tankText = tankText .. (i > 1 and ", " or "") .. ColorizeNameByClass(tank.name, tank.class)
       end
       tanksDisplay:SetText(tankText)
-      -- Color the first tank's name
-      local firstTank = tanks[1]
-      local firstColor = GetClassColor(firstTank.class)
-      tanksDisplay:SetTextColor(firstColor.r, firstColor.g, firstColor.b)
+      -- Text includes inline class color codes per tank.
+      tanksDisplay:SetTextColor(1, 1, 1)
     end
   end
   
   -- Quick Select Label
-  CreateDivider(-175)
+  CreateDivider(-200)
 
   local quickLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  quickLabel:SetPoint("TOPLEFT", 20, -190)
+  quickLabel:SetPoint("TOPLEFT", 20, -215)
   quickLabel:SetText("Quick Select:")
   quickLabel:SetTextColor(0.9, 0.9, 0.9)
 
   -- Quick Select Buttons
   local quickBtn1 = CreateFrame("Button", nil, dialog, "GameMenuButtonTemplate")
-  quickBtn1:SetPoint("TOPLEFT", 20, -210)
+  quickBtn1:SetPoint("TOPLEFT", 20, -235)
   quickBtn1:SetSize(120, 22)
   quickBtn1:Hide()
 
@@ -405,13 +484,13 @@ local function CreateSettingsDialog()
 
   -- Preferred Tank Label
   local tankLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  tankLabel:SetPoint("TOPLEFT", 20, -240)
+  tankLabel:SetPoint("TOPLEFT", 20, -255)
   tankLabel:SetText("Force Specific Tank (optional):")
   tankLabel:SetTextColor(1, 1, 1, 1)
 
   -- Tank Name Input Box
   local tankInput = CreateFrame("EditBox", "DirtyTricksTankInput", dialog, "InputBoxTemplate")
-  tankInput:SetPoint("TOPLEFT", 20, -260)
+  tankInput:SetPoint("TOPLEFT", 20, -275)
   tankInput:SetSize(200, 20)
   tankInput:SetText(SARDB.preferredTankName or "")
   tankInput:SetAutoFocus(false)
@@ -439,7 +518,7 @@ local function CreateSettingsDialog()
     end
   end
 
-  local function UpdateQuickSelectButtons()
+  UpdateQuickSelectButtons = function()
     local tanks = GetDetectedTanks()
     if tanks[1] and tanks[1].name then
       quickBtn1:SetText(tanks[1].name)
@@ -490,6 +569,7 @@ local function CreateSettingsDialog()
     end
     minimapCheck:SetChecked(not SARDB.minimap.hide)
     announcementsCheck:SetChecked(SARDB.announcements)
+    parityCheck:SetChecked(SARDB.preferRaidParityTank)
   end)
   
   -- OK Button
