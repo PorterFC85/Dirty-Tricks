@@ -10,8 +10,8 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.5
-Date: March 18, 2026
+Version: 2.0.6
+Date: March 20, 2026
 
 ================================================================================
 Copyright (c) 2026 Dirty Tricks
@@ -110,6 +110,29 @@ local MACRO_TEMPLATE = "#showtooltip %s\n/cast "
 local MACRO_TARGET_TEMPLATE = "[@%s,help,nodead]"
 local MACRO_PET_TARGET_TEMPLATE = "[@pet]" -- Simpler conditional for pet targeting
 
+local TANK_CLASSES = {
+  WARRIOR = true,
+  PALADIN = true,
+  DEATHKNIGHT = true,
+  DEMONHUNTER = true,
+  MONK = true,
+  DRUID = true
+}
+
+local TANK_SPEC_IDS = {
+  [73] = true,  -- Warrior: Protection
+  [66] = true,  -- Paladin: Protection
+  [250] = true, -- Death Knight: Blood
+  [581] = true, -- Demon Hunter: Vengeance
+  [268] = true, -- Monk: Brewmaster
+  [104] = true  -- Druid: Guardian
+}
+
+local delveInspectSpecByGUID = {}
+local delveInspectPendingByGUID = {}
+
+local IsInDelve
+
 local function TrimString(value)
   if value == nil then return "" end
   if strtrim then return strtrim(value) end
@@ -166,6 +189,101 @@ end
 local function IsSameRaidParity(subgroupA, subgroupB)
   if not subgroupA or not subgroupB then return false end
   return (subgroupA % 2) == (subgroupB % 2)
+end
+
+local function IsTankClassUnit(unitId)
+  if not UnitExists(unitId) then return false end
+  local _, class = UnitClass(unitId)
+  return class and TANK_CLASSES[class] or false
+end
+
+local function IsTankSpecId(specId)
+  return specId and TANK_SPEC_IDS[specId] or false
+end
+
+local function GetPlayerSpecId()
+  if not GetSpecialization or not GetSpecializationInfo then return nil end
+  local specIndex = GetSpecialization()
+  if not specIndex then return nil end
+  local specId = GetSpecializationInfo(specIndex)
+  if specId and specId > 0 then
+    return specId
+  end
+  return nil
+end
+
+local function GetOtherPlayerCountInParty()
+  if not IsInGroup() or IsInRaid() then return 0 end
+
+  local count = 0
+  for i = 1, GetNumSubgroupMembers() do
+    local unitId = "party" .. i
+    if UnitExists(unitId) and UnitIsPlayer(unitId) then
+      count = count + 1
+    end
+  end
+
+  return count
+end
+
+local function ShouldScanDelveInspects()
+  if not IsInDelve() then return false end
+  if not IsInGroup() or IsInRaid() then return false end
+  return GetOtherPlayerCountInParty() > 0
+end
+
+local function PruneDelveInspectState()
+  local activeGuids = {}
+  for i = 1, GetNumSubgroupMembers() do
+    local unitId = "party" .. i
+    if UnitExists(unitId) and UnitIsPlayer(unitId) then
+      local guid = UnitGUID(unitId)
+      if guid then
+        activeGuids[guid] = true
+      end
+    end
+  end
+
+  for guid in pairs(delveInspectSpecByGUID) do
+    if not activeGuids[guid] then
+      delveInspectSpecByGUID[guid] = nil
+    end
+  end
+  for guid in pairs(delveInspectPendingByGUID) do
+    if not activeGuids[guid] then
+      delveInspectPendingByGUID[guid] = nil
+    end
+  end
+end
+
+local function QueueDelveInspectScan()
+  if not NotifyInspect or not CanInspect then return end
+  if not ShouldScanDelveInspects() then return end
+
+  for i = 1, GetNumSubgroupMembers() do
+    local unitId = "party" .. i
+    if UnitExists(unitId) and UnitIsPlayer(unitId) and IsTankClassUnit(unitId) then
+      local guid = UnitGUID(unitId)
+      if guid and delveInspectSpecByGUID[guid] == nil and not delveInspectPendingByGUID[guid] then
+        if CanInspect(unitId) then
+          NotifyInspect(unitId)
+          delveInspectPendingByGUID[guid] = true
+          return
+        end
+      end
+    end
+  end
+end
+
+local function FindPartyUnitByGUID(guid)
+  if not guid then return nil end
+  for i = 1, GetNumSubgroupMembers() do
+    local unitId = "party" .. i
+    if UnitExists(unitId) and UnitGUID(unitId) == guid then
+      return unitId
+    end
+  end
+  return nil
 end
 
 -- Find all tanks in current group (returns table of {name, unitId})
@@ -236,6 +354,27 @@ local function FindTanks()
         if AddTank(unitId) then break end
       end
     end
+
+    -- Delve fallback: roles are not assigned inside Delves.
+    -- Use spec-aware detection for real players when inspect data is available.
+    local totalFound = #alivePreferredTanks + #aliveOtherTanks + #deadPreferredTanks + #deadOtherTanks
+    if totalFound == 0 and IsInDelve() then
+      local playerSpecId = GetPlayerSpecId()
+      if IsTankSpecId(playerSpecId) or (not playerSpecId and IsTankClassUnit("player")) then
+        AddTank("player")
+      end
+
+      for i = 1, GetNumSubgroupMembers() do
+        local unitId = "party" .. i
+        if UnitExists(unitId) and UnitIsPlayer(unitId) and IsTankClassUnit(unitId) then
+          local guid = UnitGUID(unitId)
+          local specId = guid and delveInspectSpecByGUID[guid] or nil
+          if IsTankSpecId(specId) then
+            AddTank(unitId)
+          end
+        end
+      end
+    end
   else
     return alivePreferredTanks
   end
@@ -260,7 +399,7 @@ local function FindTanks()
 end
 
 -- Check if player is in a Delve
-local function IsInDelve()
+IsInDelve = function()
   local name, instanceType, difficultyID, _, _, _, _, instanceID = GetInstanceInfo()
   -- Delves use instance type "scenario"
   if instanceType == "scenario" then
@@ -327,6 +466,9 @@ local function GetProfileTypeString()
   if IsInRaid() then
     return "Raid"
   elseif IsInGroup() then
+    if IsInDelve() then
+      return "Delve"
+    end
     return "Party"
   else
     -- Solo: check if hunter with pet
@@ -614,6 +756,31 @@ local function HandleGroupStateTransition()
   wasInRaid = inRaid
 end
 
+local function HandleInspectReady(guid)
+  if not guid then return end
+
+  if delveInspectPendingByGUID[guid] then
+    delveInspectPendingByGUID[guid] = nil
+  end
+
+  local unitId = FindPartyUnitByGUID(guid)
+  if unitId and GetInspectSpecialization then
+    local specId = GetInspectSpecialization(unitId)
+    if specId and specId > 0 then
+      delveInspectSpecByGUID[guid] = specId
+    else
+      delveInspectSpecByGUID[guid] = false
+    end
+  end
+
+  if ClearInspectPlayer then
+    ClearInspectPlayer()
+  end
+
+  QueueDelveInspectScan()
+  RequestUpdateMacros(false, { delay = 0.05, bypassRaidSettle = true })
+end
+
 DirtyTricksRequestUpdateMacros = RequestUpdateMacros
 
 Addon:RegisterEvent("GROUP_JOINED")
@@ -625,11 +792,20 @@ Addon:RegisterEvent("PLAYER_ALIVE")
 Addon:RegisterEvent("PLAYER_UNGHOST")
 Addon:RegisterEvent("UNIT_PET")
 Addon:RegisterEvent("READY_CHECK")
+Addon:RegisterEvent("INSPECT_READY")
 Addon:SetScript("OnEvent", function(self, event, ...)
   HandleGroupStateTransition()
 
   if event == "GROUP_JOINED" or event == "GROUP_ROSTER_UPDATE" then
     MarkRaidSettleWindow()
+    PruneDelveInspectState()
+    QueueDelveInspectScan()
+  elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
+    PruneDelveInspectState()
+    QueueDelveInspectScan()
+  elseif event == "INSPECT_READY" then
+    HandleInspectReady(...)
+    return
   end
 
   if event == "PLAYER_REGEN_ENABLED" then

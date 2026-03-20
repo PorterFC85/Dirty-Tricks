@@ -4,7 +4,7 @@
 ## Notes: Automatically creates macros for Tricks of the Trade and Misdirection that target your tank
 ## Notes-Short: Auto Tricks/Misdirection to tank
 ## Author: PorterFC85
-## Version: 2.0.5
+## Version: 2.0.6
 ## SavedVariables: SARDB
 ## X-License: MIT
 ## X-Category: Rogue, Hunter

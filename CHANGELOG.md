@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.6 - 2026-03-20
+
+This release improves Delve tank detection for groups where role assignments are unavailable.
+
+### Added
+- Added Delve inspect scan support for party members in tank-capable classes.
+- Added inspected specialization cache handling for asynchronous tank detection updates.
+
+### Changed
+- Changed Delve scan behavior to only run inspect logic when at least one real player (besides the user) is in the party.
+- Updated grouped Delve profile label output from `Party` to `Delve`.
+
+### Fixed
+- Fixed Delve grouped detection where role-based APIs return no assigned tank roles.
+
 ## 2.0.5 - 2026-03-19
 
 This release improves raid/party stability, reduces chat spam, and adds better raid targeting controls.
