@@ -10,8 +10,8 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.6
-Date: March 20, 2026
+Version: 2.0.7
+Date: March 27, 2026
 
 ================================================================================
 Copyright (c) 2026 Dirty Tricks
@@ -256,9 +256,29 @@ local function PruneDelveInspectState()
   end
 end
 
+local function ResetDelveInspectState()
+  local hadPending = false
+  for guid in pairs(delveInspectPendingByGUID) do
+    hadPending = true
+    delveInspectPendingByGUID[guid] = nil
+  end
+
+  for guid in pairs(delveInspectSpecByGUID) do
+    delveInspectSpecByGUID[guid] = nil
+  end
+
+  -- Only clear inspect if this addon previously requested one.
+  if hadPending and ClearInspectPlayer then
+    ClearInspectPlayer()
+  end
+end
+
 local function QueueDelveInspectScan()
   if not NotifyInspect or not CanInspect then return end
-  if not ShouldScanDelveInspects() then return end
+  if not ShouldScanDelveInspects() then
+    ResetDelveInspectState()
+    return
+  end
 
   for i = 1, GetNumSubgroupMembers() do
     local unitId = "party" .. i
@@ -284,6 +304,14 @@ local function FindPartyUnitByGUID(guid)
     end
   end
   return nil
+end
+
+local function CountTableEntries(t)
+  local count = 0
+  for _ in pairs(t) do
+    count = count + 1
+  end
+  return count
 end
 
 -- Find all tanks in current group (returns table of {name, unitId})
@@ -759,9 +787,18 @@ end
 local function HandleInspectReady(guid)
   if not guid then return end
 
-  if delveInspectPendingByGUID[guid] then
-    delveInspectPendingByGUID[guid] = nil
+  -- Ignore inspect completions that were not initiated by our Delve scan.
+  if not delveInspectPendingByGUID[guid] then
+    return
   end
+
+  -- Delve-only inspect logic should never run outside Delves.
+  if not ShouldScanDelveInspects() then
+    delveInspectPendingByGUID[guid] = nil
+    return
+  end
+
+  delveInspectPendingByGUID[guid] = nil
 
   local unitId = FindPartyUnitByGUID(guid)
   if unitId and GetInspectSpecialization then
@@ -798,10 +835,18 @@ Addon:SetScript("OnEvent", function(self, event, ...)
 
   if event == "GROUP_JOINED" or event == "GROUP_ROSTER_UPDATE" then
     MarkRaidSettleWindow()
-    PruneDelveInspectState()
+    if ShouldScanDelveInspects() then
+      PruneDelveInspectState()
+    else
+      ResetDelveInspectState()
+    end
     QueueDelveInspectScan()
   elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
-    PruneDelveInspectState()
+    if ShouldScanDelveInspects() then
+      PruneDelveInspectState()
+    else
+      ResetDelveInspectState()
+    end
     QueueDelveInspectScan()
   elseif event == "INSPECT_READY" then
     HandleInspectReady(...)
@@ -898,6 +943,8 @@ SlashCmdList["SAR"] = function(msg)
     print("  Tanks Found: " .. ColorizeText(tostring(#tanks), 1, 1, 0.8))
     print("  Preferred Tank: " .. ColorizeText(tostring(SARDB.preferredTankName or "None"), 1, 1, 0.8))
     print("  Raid Parity Preference: " .. ColorizeText(tostring(SARDB.preferRaidParityTank), 1, 1, 0.8))
+    print("  Delve Inspect Pending: " .. ColorizeText(tostring(CountTableEntries(delveInspectPendingByGUID)), 1, 1, 0.8))
+    print("  Delve Inspect Cached Specs: " .. ColorizeText(tostring(CountTableEntries(delveInspectSpecByGUID)), 1, 1, 0.8))
 
     if IsInRaid() then
       local playerSubgroup = GetRaidSubgroupForUnit("player")

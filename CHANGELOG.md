@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## 2.0.7 - 2026-03-27
+
+This release hardens Delve inspect behavior so it cannot interfere with normal inspect usage outside Delves.
+
+### Changed
+- Scoped Delve inspect state handling so scans reset immediately when Delve conditions are no longer active.
+- Restricted inspect-ready processing to addon-initiated Delve inspect requests only.
+
+### Fixed
+- Fixed inspect leakage that could interrupt manual player inspection outside Delves.
+
+### Added
+- Added `/dirtytricks debug` counters for pending and cached Delve inspect state visibility.
+
 ## 2.0.6 - 2026-03-20
 
 This release improves Delve tank detection for groups where role assignments are unavailable.
