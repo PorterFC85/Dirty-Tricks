@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 2.0.9 - 2026-03-31
+
+This release updates addon metadata for current client compatibility.
+
+### Fixed
+- Fixed TOC interface metadata to resolve outdated addon interface warnings.
+
+### Changed
+- Bumped addon version metadata and documentation references from `2.0.8` to `2.0.9`.
+
 ## 2.0.8 - 2026-03-31
 
 This release adds a chat announcement toggle, reduces notification spam to context-change transitions only, recognises Delve as its own group context, stops Delve inspect scanning once a tank is confirmed, and polishes the settings dialog.
