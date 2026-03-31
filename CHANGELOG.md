@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 2.0.10 - 2026-03-31
+
+This hotfix republishes the addon with updated package contents so CurseForge receives the latest files.
+
+### Fixed
+- Repackaged release artifacts from the current commit to ensure updated TOC and versioned files are included on CurseForge.
+
 ## 2.0.9 - 2026-03-31
 
 This release updates addon metadata for current client compatibility.

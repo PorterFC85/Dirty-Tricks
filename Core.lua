@@ -10,7 +10,7 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.9
+Version: 2.0.10
 Date: March 31, 2026
 
 ================================================================================
