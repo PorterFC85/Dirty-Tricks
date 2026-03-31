@@ -10,8 +10,8 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.7
-Date: March 27, 2026
+Version: 2.0.8
+Date: March 31, 2026
 
 ================================================================================
 Copyright (c) 2026 Dirty Tricks
@@ -49,12 +49,13 @@ local READY_CHECK_UPDATE_DELAY = 0.2
 local raidSettleUntil = 0
 
 local function GetGroupAnnouncementContext()
-  if IsInRaid() then
-    return "raid"
+  if IsInDelve and IsInDelve() then
+    if IsInRaid() then return "delve-raid" end
+    if IsInGroup() then return "delve-party" end
+    return "delve-solo"
   end
-  if IsInGroup() then
-    return "party"
-  end
+  if IsInRaid() then return "raid" end
+  if IsInGroup() then return "party" end
   return "solo"
 end
 
@@ -100,6 +101,14 @@ local ADDON_COLOR = { r = 0.3, g = 0.8, b = 0.3 } -- Green
 local PROFILE_COLOR = { r = 0.8, g = 0.8, b = 0.3 } -- Yellow
 local STATUS_COLOR = { r = 0.7, g = 0.7, b = 1 } -- Light blue
 
+-- Chat notification helper: respects the announcements toggle.
+-- Debug output and slash command responses should use print() directly.
+local function NotifyPrint(msg)
+  if type(SARDB) == "table" and SARDB.announcements then
+    print(msg)
+  end
+end
+
 -- Macro configuration
 local MACRO_SPELLS = {
   { id = 57934, fallbackName = "Tricks of the Trade" },
@@ -128,10 +137,20 @@ local TANK_SPEC_IDS = {
   [104] = true  -- Druid: Guardian
 }
 
+local DELVE_INSPECT_TIMEOUT = 1.5
+local DELVE_INSPECT_MAX_RETRIES = 1
+
 local delveInspectSpecByGUID = {}
 local delveInspectPendingByGUID = {}
+local delveInspectAttemptCountByGUID = {}
+local delveInspectSessionKey = nil
+local delveInspectRequestSerial = 0
+local delveInspectLastTargetName = nil
+local delveInspectLastResult = "idle"
 
 local IsInDelve
+local QueueDelveInspectScan
+local RequestUpdateMacros
 
 local function TrimString(value)
   if value == nil then return "" end
@@ -212,6 +231,16 @@ local function GetPlayerSpecId()
   return nil
 end
 
+-- Returns true if at least one confirmed tank exists (player or a cached Delve inspect).
+-- Used to short-circuit Delve inspect scanning once a tank is known.
+local function HasConfirmedDelveTank()
+  if IsTankSpecId(GetPlayerSpecId()) then return true end
+  for _, cachedSpecId in pairs(delveInspectSpecByGUID) do
+    if IsTankSpecId(cachedSpecId) then return true end
+  end
+  return false
+end
+
 local function GetOtherPlayerCountInParty()
   if not IsInGroup() or IsInRaid() then return 0 end
 
@@ -232,8 +261,47 @@ local function ShouldScanDelveInspects()
   return GetOtherPlayerCountInParty() > 0
 end
 
+local function GetDelveInspectSessionKey()
+  if not IsInDelve() then return nil end
+
+  local name, instanceType, difficultyID, _, _, _, _, instanceID = GetInstanceInfo()
+  if instanceType ~= "scenario" then return nil end
+
+  return table.concat({
+    tostring(instanceID or 0),
+    tostring(difficultyID or 0),
+    tostring(name or "unknown")
+  }, ":")
+end
+
+local function GetActiveDelveInspectPending()
+  for guid, pending in pairs(delveInspectPendingByGUID) do
+    if pending then
+      return guid, pending
+    end
+  end
+  return nil, nil
+end
+
+local function GetDelveInspectRetryCount()
+  local retries = 0
+  for _, attempts in pairs(delveInspectAttemptCountByGUID) do
+    if attempts and attempts > 1 then
+      retries = retries + (attempts - 1)
+    end
+  end
+  return retries
+end
+
+local function ClearDelveInspectPending(guid)
+  local pending = delveInspectPendingByGUID[guid]
+  delveInspectPendingByGUID[guid] = nil
+  return pending
+end
+
 local function PruneDelveInspectState()
   local activeGuids = {}
+  local hadPendingRemoval = false
   for i = 1, GetNumSubgroupMembers() do
     local unitId = "party" .. i
     if UnitExists(unitId) and UnitIsPlayer(unitId) then
@@ -252,7 +320,17 @@ local function PruneDelveInspectState()
   for guid in pairs(delveInspectPendingByGUID) do
     if not activeGuids[guid] then
       delveInspectPendingByGUID[guid] = nil
+      hadPendingRemoval = true
     end
+  end
+  for guid in pairs(delveInspectAttemptCountByGUID) do
+    if not activeGuids[guid] then
+      delveInspectAttemptCountByGUID[guid] = nil
+    end
+  end
+
+  if hadPendingRemoval and ClearInspectPlayer then
+    ClearInspectPlayer()
   end
 end
 
@@ -266,6 +344,12 @@ local function ResetDelveInspectState()
   for guid in pairs(delveInspectSpecByGUID) do
     delveInspectSpecByGUID[guid] = nil
   end
+  for guid in pairs(delveInspectAttemptCountByGUID) do
+    delveInspectAttemptCountByGUID[guid] = nil
+  end
+
+  delveInspectLastTargetName = nil
+  delveInspectLastResult = "idle"
 
   -- Only clear inspect if this addon previously requested one.
   if hadPending and ClearInspectPlayer then
@@ -273,10 +357,62 @@ local function ResetDelveInspectState()
   end
 end
 
-local function QueueDelveInspectScan()
-  if not NotifyInspect or not CanInspect then return end
-  if not ShouldScanDelveInspects() then
+local function SyncDelveInspectSession()
+  local sessionKey = GetDelveInspectSessionKey()
+
+  if not sessionKey or not IsInGroup() or IsInRaid() then
+    if delveInspectSessionKey then
+      delveInspectSessionKey = nil
+      ResetDelveInspectState()
+    end
+    return false
+  end
+
+  if delveInspectSessionKey ~= sessionKey then
+    delveInspectSessionKey = sessionKey
     ResetDelveInspectState()
+  end
+
+  return true
+end
+
+local function HandleDelveInspectTimeout(guid, requestSerial)
+  local pending = delveInspectPendingByGUID[guid]
+  if not pending or pending.requestSerial ~= requestSerial then
+    return
+  end
+
+  ClearDelveInspectPending(guid)
+  delveInspectLastTargetName = pending.unitName or delveInspectLastTargetName
+
+  if ClearInspectPlayer then
+    ClearInspectPlayer()
+  end
+
+  if SyncDelveInspectSession() and ShouldScanDelveInspects() and (delveInspectAttemptCountByGUID[guid] or 0) <= DELVE_INSPECT_MAX_RETRIES then
+    delveInspectLastResult = "timeout-retry"
+  else
+    delveInspectSpecByGUID[guid] = false
+    delveInspectLastResult = "timeout-final"
+  end
+
+  QueueDelveInspectScan()
+  RequestUpdateMacros(false, { delay = 0.05, bypassRaidSettle = true })
+end
+
+QueueDelveInspectScan = function()
+  if not NotifyInspect or not CanInspect then return end
+  if not SyncDelveInspectSession() or not ShouldScanDelveInspects() then
+    return
+  end
+
+  if GetActiveDelveInspectPending() then
+    return
+  end
+
+  -- If a tank spec is already confirmed (player or cached inspect), stop scanning.
+  if HasConfirmedDelveTank() then
+    delveInspectLastResult = "tank-found-scan-stopped"
     return
   end
 
@@ -284,10 +420,23 @@ local function QueueDelveInspectScan()
     local unitId = "party" .. i
     if UnitExists(unitId) and UnitIsPlayer(unitId) and IsTankClassUnit(unitId) then
       local guid = UnitGUID(unitId)
-      if guid and delveInspectSpecByGUID[guid] == nil and not delveInspectPendingByGUID[guid] then
+      if guid and delveInspectSpecByGUID[guid] == nil and not delveInspectPendingByGUID[guid] and (delveInspectAttemptCountByGUID[guid] or 0) <= DELVE_INSPECT_MAX_RETRIES then
         if CanInspect(unitId) then
+          delveInspectRequestSerial = delveInspectRequestSerial + 1
+          local requestSerial = delveInspectRequestSerial
+          delveInspectAttemptCountByGUID[guid] = (delveInspectAttemptCountByGUID[guid] or 0) + 1
+          delveInspectLastTargetName = UnitName(unitId) or unitId
+          delveInspectLastResult = "requested"
+          delveInspectPendingByGUID[guid] = {
+            unitId = unitId,
+            unitName = delveInspectLastTargetName,
+            requestedAt = GetTime(),
+            requestSerial = requestSerial
+          }
           NotifyInspect(unitId)
-          delveInspectPendingByGUID[guid] = true
+          C_Timer.After(DELVE_INSPECT_TIMEOUT, function()
+            HandleDelveInspectTimeout(guid, requestSerial)
+          end)
           return
         end
       end
@@ -694,13 +843,13 @@ function UpdateMacros(shouldPrintMessage)
           local msg = ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " " ..
                       ColorizeText("Created macro:", STATUS_COLOR.r, STATUS_COLOR.g, STATUS_COLOR.b) .. " " ..
                       macroName .. " " .. ColorizeText("(" .. profileType .. ")", PROFILE_COLOR.r, PROFILE_COLOR.g, PROFILE_COLOR.b)
-          print(msg)
+          NotifyPrint(msg)
         elseif existingBody ~= body then
           EditMacro(macroName, macroName, icon, body)
           local msg = ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " " ..
                       ColorizeText("Macro updated:", STATUS_COLOR.r, STATUS_COLOR.g, STATUS_COLOR.b) .. " " ..
                       macroName .. " " .. ColorizeText("(" .. profileType .. ")", PROFILE_COLOR.r, PROFILE_COLOR.g, PROFILE_COLOR.b)
-          print(msg)
+          NotifyPrint(msg)
         end
       end
     end
@@ -738,7 +887,7 @@ local function RunQueuedUpdate()
   UpdateMacros(shouldPrint)
 end
 
-local function RequestUpdateMacros(shouldPrint, options)
+RequestUpdateMacros = function(shouldPrint, options)
   options = options or {}
   pendingPrint = pendingPrint or shouldPrint
   pendingBypassRaidSettle = pendingBypassRaidSettle or options.bypassRaidSettle
@@ -788,26 +937,33 @@ local function HandleInspectReady(guid)
   if not guid then return end
 
   -- Ignore inspect completions that were not initiated by our Delve scan.
-  if not delveInspectPendingByGUID[guid] then
+  local pending = delveInspectPendingByGUID[guid]
+  if not pending then
     return
   end
 
   -- Delve-only inspect logic should never run outside Delves.
-  if not ShouldScanDelveInspects() then
-    delveInspectPendingByGUID[guid] = nil
+  if not SyncDelveInspectSession() or not ShouldScanDelveInspects() then
+    ClearDelveInspectPending(guid)
     return
   end
 
-  delveInspectPendingByGUID[guid] = nil
+  ClearDelveInspectPending(guid)
+  delveInspectLastTargetName = pending.unitName or delveInspectLastTargetName
 
   local unitId = FindPartyUnitByGUID(guid)
   if unitId and GetInspectSpecialization then
     local specId = GetInspectSpecialization(unitId)
     if specId and specId > 0 then
       delveInspectSpecByGUID[guid] = specId
+      delveInspectLastResult = "ready:" .. tostring(specId)
     else
       delveInspectSpecByGUID[guid] = false
+      delveInspectLastResult = "ready:none"
     end
+  else
+    delveInspectSpecByGUID[guid] = false
+    delveInspectLastResult = "ready:missing"
   end
 
   if ClearInspectPlayer then
@@ -835,17 +991,13 @@ Addon:SetScript("OnEvent", function(self, event, ...)
 
   if event == "GROUP_JOINED" or event == "GROUP_ROSTER_UPDATE" then
     MarkRaidSettleWindow()
-    if ShouldScanDelveInspects() then
+    if SyncDelveInspectSession() then
       PruneDelveInspectState()
-    else
-      ResetDelveInspectState()
     end
     QueueDelveInspectScan()
   elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
-    if ShouldScanDelveInspects() then
+    if SyncDelveInspectSession() then
       PruneDelveInspectState()
-    else
-      ResetDelveInspectState()
     end
     QueueDelveInspectScan()
   elseif event == "INSPECT_READY" then
@@ -940,11 +1092,22 @@ SlashCmdList["SAR"] = function(msg)
       end
     end
     local tanks = FindTanks()
+    local pendingGuid, pending = GetActiveDelveInspectPending()
     print("  Tanks Found: " .. ColorizeText(tostring(#tanks), 1, 1, 0.8))
     print("  Preferred Tank: " .. ColorizeText(tostring(SARDB.preferredTankName or "None"), 1, 1, 0.8))
     print("  Raid Parity Preference: " .. ColorizeText(tostring(SARDB.preferRaidParityTank), 1, 1, 0.8))
+    print("  Delve Inspect Session: " .. ColorizeText(tostring(delveInspectSessionKey or "None"), 1, 1, 0.8))
     print("  Delve Inspect Pending: " .. ColorizeText(tostring(CountTableEntries(delveInspectPendingByGUID)), 1, 1, 0.8))
     print("  Delve Inspect Cached Specs: " .. ColorizeText(tostring(CountTableEntries(delveInspectSpecByGUID)), 1, 1, 0.8))
+    print("  Delve Inspect Retries: " .. ColorizeText(tostring(GetDelveInspectRetryCount()), 1, 1, 0.8))
+    print("  Delve Inspect Last Target: " .. ColorizeText(tostring(delveInspectLastTargetName or "None"), 1, 1, 0.8))
+    print("  Delve Inspect Last Result: " .. ColorizeText(tostring(delveInspectLastResult), 1, 1, 0.8))
+    if pendingGuid and pending then
+      local pendingAge = GetTime() - (pending.requestedAt or GetTime())
+      print("  Active Inspect GUID: " .. ColorizeText(tostring(pendingGuid), 1, 1, 0.8))
+      print("  Active Inspect Target: " .. ColorizeText(tostring(pending.unitName or pending.unitId or "Unknown"), 1, 1, 0.8))
+      print("  Active Inspect Age: " .. ColorizeText(string.format("%.2fs", pendingAge), 1, 1, 0.8))
+    end
 
     if IsInRaid() then
       local playerSubgroup = GetRaidSubgroupForUnit("player")

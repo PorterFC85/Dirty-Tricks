@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+## 2.0.8 - 2026-03-31
+
+This release adds a chat announcement toggle, reduces notification spam to context-change transitions only, recognises Delve as its own group context, stops Delve inspect scanning once a tank is confirmed, and polishes the settings dialog.
+
+### Added
+- Added `NotifyPrint` helper in Core and Settings modules so all automatic chat output is routed through the announcements toggle.
+- Added `HasConfirmedDelveTank` check that stops Delve inspect scanning early once a tank spec is confirmed, avoiding unnecessary inspect requests.
+- Added Delve-specific announcement contexts (`delve-solo`, `delve-party`, `delve-raid`) so entering or leaving a Delve fires its own context-change notification.
+
+### Changed
+- Changed chat announcements toggle (Settings → Enable Chat Announcements) to suppress all automatic addon output including macro creation, macro update, and tank-selection messages; slash command and debug output is always shown regardless of the toggle.
+- Changed notifications to fire only once per group context transition (solo / party / delve / raid) instead of repeating on every macro update cycle.
+- Changed Delve inspect scans to use a single-flight queue so only one party member inspect can be pending at a time.
+- Changed Delve session handling to keep inspect cache for still-present party members during transient Delve roster and zone events.
+- Changed settings dialog size from 420×340 to 440×360 with refreshed border and title bar colours and brighter section dividers.
+
+### Fixed
+- Fixed Delve inspect churn that could trigger extra inspect requests for multiple tank-capable party members.
+- Fixed Delve inspect stalls by adding bounded timeout recovery with a single retry before marking the member complete for the session.
+
+### Added (prior)
+- Added extended `/dirtytricks debug` visibility for Delve inspect session, retry, and last-target state.
+
 ## 2.0.7 - 2026-03-27
 
 This release hardens Delve inspect behavior so it cannot interfere with normal inspect usage outside Delves.

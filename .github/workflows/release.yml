@@ -31,6 +31,8 @@ jobs:
 
       - name: Package and Upload
         uses: BigWigsMods/packager@v2
+        with:
+          args: '-n ":Dirty Tricks v{project-version}"'
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CF_PROJECT_ID: 1464507

@@ -14,7 +14,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 -- Get addon version - try modern API first, fall back to hardcoded
 local function GetAddonVersion()
-  local version = "2.0.7"
+  local version = "2.0.8"
   
   -- Try new C_AddOns namespace
   if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -47,6 +47,15 @@ local function TrimString(value)
   if value == nil then return "" end
   if strtrim then return strtrim(value) end
   return (value:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Chat notification helper: mirrors Core.lua's NotifyPrint.
+-- Routes prints through the announcements toggle; direct user action feedback
+-- should use print() directly instead.
+local function NotifyPrint(msg)
+  if type(SARDB) == "table" and SARDB.announcements then
+    print(msg)
+  end
 end
 
 -- Function to get current profile type
@@ -269,7 +278,7 @@ end
 local function CreateSettingsDialog()
   EnsureSavedVars()
   local dialog = CreateFrame("Frame", "DirtyTricksSettingsDialog", UIParent)
-  dialog:SetSize(420, 340)
+  dialog:SetSize(440, 360)
   dialog:SetPoint("CENTER")
   dialog:SetFrameStrata("DIALOG")
   dialog:Hide()
@@ -281,10 +290,9 @@ local function CreateSettingsDialog()
   
   -- Border texture
   local border = dialog:CreateTexture(nil, "BORDER")
-  border:SetAllPoints()
-  border:SetColorTexture(0.2, 0.2, 0.2, 1)
-  border:SetSize(422, 342)
-  border:SetPoint("CENTER", dialog, "CENTER")
+  border:SetPoint("TOPLEFT", dialog, "TOPLEFT", -1, 1)
+  border:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", 1, -1)
+  border:SetColorTexture(0.24, 0.24, 0.26, 1)
   
   -- Make movable
   dialog:SetMovable(true)
@@ -297,9 +305,10 @@ local function CreateSettingsDialog()
   
   -- Title Bar
   local titleBg = dialog:CreateTexture(nil, "BACKGROUND")
-  titleBg:SetSize(420, 30)
-  titleBg:SetPoint("TOPLEFT")
-  titleBg:SetColorTexture(0.2, 0.2, 0.2, 0.98)
+  titleBg:SetPoint("TOPLEFT", dialog, "TOPLEFT", 0, 0)
+  titleBg:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", 0, 0)
+  titleBg:SetHeight(32)
+  titleBg:SetColorTexture(0.18, 0.18, 0.2, 1)
   
   local titleText = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
   titleText:SetPoint("TOPLEFT", dialog, "TOPLEFT", 20, -8)
@@ -321,7 +330,7 @@ local function CreateSettingsDialog()
 
   local function CreateDivider(yOffset)
     local line = dialog:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(1, 1, 1, 0.08)
+    line:SetColorTexture(0.85, 0.85, 0.9, 0.14)
     line:SetPoint("TOPLEFT", 20, yOffset)
     line:SetPoint("TOPRIGHT", -20, yOffset)
     line:SetHeight(1)
@@ -333,7 +342,7 @@ local function CreateSettingsDialog()
   enableCheck:SetChecked(SARDB.enabled)
   enableCheck:SetScript("OnClick", function(self)
     SARDB.enabled = self:GetChecked()
-    print("[Dirty Tricks] Addon", SARDB.enabled and "Enabled" or "Disabled")
+    NotifyPrint("[Dirty Tricks] Addon " .. (SARDB.enabled and "Enabled" or "Disabled"))
     if SARDB.enabled then
       if DirtyTricksRequestUpdateMacros then
         DirtyTricksRequestUpdateMacros(true)
@@ -500,14 +509,14 @@ local function CreateSettingsDialog()
     SARDB.preferredTankName = name
     tankInput:SetText(name or "")
     if name == "focus" then
-      print("[Dirty Tricks] Preferred tank set to: Focus")
+      NotifyPrint("[Dirty Tricks] Preferred tank set to: Focus")
     elseif name == "target" then
       local targetName = UnitName("target") or "Target"
-      print("[Dirty Tricks] Preferred tank set to: " .. targetName)
+      NotifyPrint("[Dirty Tricks] Preferred tank set to: " .. targetName)
     elseif name and name ~= "" then
-      print("[Dirty Tricks] Preferred tank set to: " .. name)
+      NotifyPrint("[Dirty Tricks] Preferred tank set to: " .. name)
     else
-      print("[Dirty Tricks] Preferred tank cleared")
+      NotifyPrint("[Dirty Tricks] Preferred tank cleared")
     end
     if SARDB.enabled then
       if DirtyTricksRequestUpdateMacros then
@@ -553,7 +562,7 @@ local function CreateSettingsDialog()
     if UnitExists("target") and UnitIsFriend("player", "target") and not UnitIsDead("target") then
       SetPreferredTank("target")
     else
-      print("[Dirty Tricks] Target is not a valid friendly unit.")
+      NotifyPrint("[Dirty Tricks] Target is not a valid friendly unit.")
     end
   end)
 
