@@ -50,7 +50,6 @@ local raidSettleUntil = 0
 
 local function GetGroupAnnouncementContext()
   if IsInDelve and IsInDelve() then
-    if IsInRaid() then return "delve-raid" end
     if IsInGroup() then return "delve-party" end
     return "delve-solo"
   end

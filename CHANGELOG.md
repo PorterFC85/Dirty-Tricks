@@ -11,7 +11,7 @@ This release adds a chat announcement toggle, reduces notification spam to conte
 ### Added
 - Added `NotifyPrint` helper in Core and Settings modules so all automatic chat output is routed through the announcements toggle.
 - Added `HasConfirmedDelveTank` check that stops Delve inspect scanning early once a tank spec is confirmed, avoiding unnecessary inspect requests.
-- Added Delve-specific announcement contexts (`delve-solo`, `delve-party`, `delve-raid`) so entering or leaving a Delve fires its own context-change notification.
+- Added Delve-specific announcement contexts (`delve-solo`, `delve-party`) so entering or leaving a Delve fires its own context-change notification.
 
 ### Changed
 - Changed chat announcements toggle (Settings → Enable Chat Announcements) to suppress all automatic addon output including macro creation, macro update, and tank-selection messages; slash command and debug output is always shown regardless of the toggle.
