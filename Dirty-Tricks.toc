@@ -1,5 +1,5 @@
-## Interface: 120001
-## X-Compatible-Interface: 120001,120005
+## Interface: 120005
+## X-Compatible-Interface: 120001
 ## Title: Dirty Tricks
 ## Notes: Automatically creates macros for Tricks of the Trade and Misdirection that target your tank
 ## Notes-Short: Auto Tricks/Misdirection to tank
