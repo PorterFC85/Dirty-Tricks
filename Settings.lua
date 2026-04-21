@@ -14,7 +14,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 -- Get addon version - try modern API first, fall back to hardcoded
 local function GetAddonVersion()
-  local version = "2.0.10"
+  local version = "2.0.11"
   
   -- Try new C_AddOns namespace
   if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -493,13 +493,13 @@ local function CreateSettingsDialog()
 
   -- Preferred Tank Label
   local tankLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  tankLabel:SetPoint("TOPLEFT", 20, -255)
+  tankLabel:SetPoint("TOPLEFT", quickBtn1, "BOTTOMLEFT", 0, -14)
   tankLabel:SetText("Force Specific Tank (optional):")
   tankLabel:SetTextColor(1, 1, 1, 1)
 
   -- Tank Name Input Box
   local tankInput = CreateFrame("EditBox", "DirtyTricksTankInput", dialog, "InputBoxTemplate")
-  tankInput:SetPoint("TOPLEFT", 20, -275)
+  tankInput:SetPoint("TOPLEFT", tankLabel, "BOTTOMLEFT", 0, -8)
   tankInput:SetSize(200, 20)
   tankInput:SetText(SARDB.preferredTankName or "")
   tankInput:SetAutoFocus(false)

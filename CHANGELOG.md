@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 2.0.11 - 2026-04-21
+
+This release updates addon compatibility for patch 12.0.5 and adds spacing between the quick-select tank buttons and manual tank override field in the settings dialog.
+
+### Changed
+- Updated addon interface metadata for patch 12.0.5 and bumped visible version references to `2.0.11`.
+
+### Fixed
+- Fixed settings dialog spacing so the quick-select tank buttons no longer crowd the manual tank selection field in party and raid groups.
+
 ## 2.0.10 - 2026-03-31
 
 This hotfix republishes the addon with updated package contents so CurseForge receives the latest files.
