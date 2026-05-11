@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 2.0.12 - 2026-05-11
+
+This release fixes Hunter Misdirection target priority in grouped content so detected tanks are preferred over pets in 5-player parties and Mythic+ runs.
+
+### Fixed
+- Fixed Hunter Misdirection macro target ordering so grouped tank targets are used before pet targeting when a valid tank is detected.
+- Kept solo Hunter behavior unchanged, where Misdirection still prefers pet targeting.
+
 ## 2.0.11 - 2026-04-21
 
 This release updates addon compatibility for patch 12.0.5 and adds spacing between the quick-select tank buttons and manual tank override field in the settings dialog.

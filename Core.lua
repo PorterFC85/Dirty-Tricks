@@ -10,7 +10,7 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.11
+Version: 2.0.12
 Date: March 31, 2026
 
 ================================================================================
@@ -780,10 +780,11 @@ function UpdateMacros(shouldPrintMessage)
         end
 
         -- Special-case: Hunter with Misdirection
-        -- Priority: Pet > Delve companion > tanks > player
+        -- Priority: tanks > Delve companion > pet > player in groups,
+        -- and pet > player while solo.
         if spellData.id == 34477 and playerClass == "HUNTER" then
-          -- Always prefer pet if available
-          if UnitExists("pet") and not UnitIsDead("pet") then
+          -- Prefer pet only when solo or when no tank target exists.
+          if UnitExists("pet") and not UnitIsDead("pet") and (not IsInGroup() or #tanks == 0) then
             body = body .. MACRO_PET_TARGET_TEMPLATE
           elseif useDelveCompanion then
             -- No pet, in Delve, no player tanks - use companion
