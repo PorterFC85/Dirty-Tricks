@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 2.1.0 - 2026-08-11
+
+This release updates compatibility for patch 12.1.0 and adds a default-off Delve functionality toggle.
+
+### Added
+- Added a new settings checkbox, Disable Delve Functionality, defaulting to off, to disable Delve-specific behavior.
+- Added `/dirtytricks delve [on|off]` slash command support to toggle Delve functionality without opening settings.
+
+### Changed
+- Updated addon interface metadata for patch 12.1.0.
+- Bumped addon version references to `2.1.0` across metadata and documentation.
+
 ## 2.0.12 - 2026-05-11
 
 This release fixes Hunter Misdirection target priority in grouped content so detected tanks are preferred over pets in 5-player parties and Mythic+ runs.

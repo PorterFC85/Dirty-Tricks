@@ -10,7 +10,7 @@ Description:
     abilities always go to the right tank with zero manual intervention.
 
 Author: PorterFC85
-Version: 2.0.12
+Version: 2.1.0
 Date: March 31, 2026
 
 ================================================================================
@@ -36,6 +36,9 @@ if type(SARDB.announcements) ~= "boolean" then
 end
 if type(SARDB.preferRaidParityTank) ~= "boolean" then
   SARDB.preferRaidParityTank = false
+end
+if type(SARDB.disableDelve) ~= "boolean" then
+  SARDB.disableDelve = false
 end
 
 local wasInGroup = IsInGroup()
@@ -576,6 +579,10 @@ end
 
 -- Check if player is in a Delve
 IsInDelve = function()
+  if SARDB and SARDB.disableDelve then
+    return false
+  end
+
   local name, instanceType, difficultyID, _, _, _, _, instanceID = GetInstanceInfo()
   -- Delves use instance type "scenario"
   if instanceType == "scenario" then
@@ -1074,6 +1081,21 @@ SlashCmdList["SAR"] = function(msg)
     else
       print(ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " Minimap icon not available.")
     end
+  elseif cmd == "delve" or cmd == "toggledelve" or cmd == "delveoff" then
+    local loweredRest = rest and rest:lower() or ""
+    if cmd == "delveoff" then
+      SARDB.disableDelve = true
+    elseif loweredRest == "on" or loweredRest == "enable" or loweredRest == "enabled" then
+      SARDB.disableDelve = false
+    elseif loweredRest == "off" or loweredRest == "disable" or loweredRest == "disabled" then
+      SARDB.disableDelve = true
+    else
+      SARDB.disableDelve = not SARDB.disableDelve
+    end
+
+    local delveStatus = SARDB.disableDelve and ColorizeText("Disabled", 1, 0.35, 0.35) or ColorizeText("Enabled", 0.35, 1, 0.35)
+    print(ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " Delve functionality " .. delveStatus)
+    RequestUpdateMacros(true)
   elseif cmd == "debug" then
     -- Debug information for troubleshooting
     print(ColorizeText("[Dirty Tricks Debug]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b))
@@ -1082,6 +1104,7 @@ SlashCmdList["SAR"] = function(msg)
     print("  Type: " .. ColorizeText(tostring(instanceType or "none"), 1, 1, 0.8))
     print("  Difficulty: " .. ColorizeText(tostring(difficultyID or "none"), 1, 1, 0.8))
     print("  In Delve: " .. ColorizeText(tostring(IsInDelve()), 1, 1, 0.8))
+    print("  Delve Features Disabled: " .. ColorizeText(tostring(SARDB.disableDelve), 1, 1, 0.8))
     print("  In Group: " .. ColorizeText(tostring(IsInGroup()), 1, 1, 0.8))
     print("  Profile: " .. ColorizeText(profileType, 1, 1, 0.8))
     if playerClass == "HUNTER" then
@@ -1174,7 +1197,14 @@ SlashCmdList["SAR"] = function(msg)
       end
     end
   elseif cmd == "help" then
-    print(ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " Use " .. ColorizeText("/dirtytricks help", PROFILE_COLOR.r, PROFILE_COLOR.g, PROFILE_COLOR.b) .. " for commands")
+    print(ColorizeText("[Dirty Tricks]", ADDON_COLOR.r, ADDON_COLOR.g, ADDON_COLOR.b) .. " Commands:")
+    print("  /dirtytricks - Toggle settings window")
+    print("  /dirtytricks toggle - Enable or disable the addon")
+    print("  /dirtytricks settank <name> - Set preferred tank")
+    print("  /dirtytricks cleartank - Clear preferred tank")
+    print("  /dirtytricks minimap - Toggle minimap icon")
+    print("  /dirtytricks delve [on|off] - Toggle Delve functionality")
+    print("  /dirtytricks debug - Print debug info")
   end
 end
 
