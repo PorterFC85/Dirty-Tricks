@@ -1,10 +1,10 @@
-## Interface: 120100, 120007
-## X-Compatible-Interface: 110207,120000,120001,120005,120007,120100
+## Interface: 120105, 120100
+## X-Compatible-Interface: 110207,120000,120001,120005,120007,120100,120105
 ## Title: Dirty Tricks
 ## Notes: Automatically creates macros for Tricks of the Trade and Misdirection that target your tank
 ## Notes-Short: Auto Tricks/Misdirection to tank
 ## Author: PorterFC85
-## Version: 2.1.0
+## Version: 2.1.1
 ## SavedVariables: SARDB
 ## X-License: MIT
 ## X-Category: Rogue, Hunter

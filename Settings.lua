@@ -14,7 +14,7 @@ local ADDON_NAME, ADDON_TABLE = ...
 
 -- Get addon version - try modern API first, fall back to hardcoded
 local function GetAddonVersion()
-  local version = "2.1.0"
+  local version = "2.1.1"
   
   -- Try new C_AddOns namespace
   if C_AddOns and C_AddOns.GetAddOnMetadata then
@@ -281,7 +281,7 @@ end
 local function CreateSettingsDialog()
   EnsureSavedVars()
   local dialog = CreateFrame("Frame", "DirtyTricksSettingsDialog", UIParent)
-  dialog:SetSize(440, 420)
+  dialog:SetSize(440, 450)
   dialog:SetPoint("CENTER")
   dialog:SetFrameStrata("DIALOG")
   dialog:Hide()
@@ -300,16 +300,15 @@ local function CreateSettingsDialog()
     end
   end
   
-  -- Background texture
-  local bg = dialog:CreateTexture(nil, "BACKGROUND")
-  bg:SetAllPoints()
-  bg:SetColorTexture(0.05, 0.05, 0.05, 0.98)
-  
-  -- Border texture
-  local border = dialog:CreateTexture(nil, "BORDER")
+  -- Flat dark panel with a thin border
+  local border = dialog:CreateTexture(nil, "BACKGROUND", nil, -2)
   border:SetPoint("TOPLEFT", dialog, "TOPLEFT", -1, 1)
   border:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", 1, -1)
-  border:SetColorTexture(0.24, 0.24, 0.26, 1)
+  border:SetColorTexture(0.30, 0.27, 0.12, 1)
+
+  local bg = dialog:CreateTexture(nil, "BACKGROUND", nil, -1)
+  bg:SetAllPoints()
+  bg:SetColorTexture(0.07, 0.07, 0.09, 0.96)
   
   -- Make movable
   dialog:SetMovable(true)
@@ -324,14 +323,20 @@ local function CreateSettingsDialog()
   local titleBg = dialog:CreateTexture(nil, "BACKGROUND")
   titleBg:SetPoint("TOPLEFT", dialog, "TOPLEFT", 0, 0)
   titleBg:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", 0, 0)
-  titleBg:SetHeight(32)
-  titleBg:SetColorTexture(0.18, 0.18, 0.2, 1)
-  
+  titleBg:SetHeight(36)
+  titleBg:SetColorTexture(0.11, 0.11, 0.14, 1)
+
+  local titleAccent = dialog:CreateTexture(nil, "ARTWORK")
+  titleAccent:SetPoint("TOPLEFT", titleBg, "BOTTOMLEFT", 0, 0)
+  titleAccent:SetPoint("TOPRIGHT", titleBg, "BOTTOMRIGHT", 0, 0)
+  titleAccent:SetHeight(2)
+  titleAccent:SetColorTexture(1, 0.96, 0.41, 0.9)
+
   local titleText = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-  titleText:SetPoint("TOPLEFT", dialog, "TOPLEFT", 20, -8)
+  titleText:SetPoint("TOPLEFT", dialog, "TOPLEFT", 20, -10)
   titleText:SetText("Dirty Tricks")
-  titleText:SetTextColor(1, 1, 0)
-  
+  titleText:SetTextColor(1, 0.96, 0.41)
+
   -- Version and Profile subtitle
   local subtitleText = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
   subtitleText:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -20, 6)
@@ -345,9 +350,33 @@ local function CreateSettingsDialog()
     dialog:Hide()
   end)
 
+  -- Flat button look replacing the Blizzard red button art
+  local function StyleButton(btn)
+    if btn.Left then btn.Left:Hide() end
+    if btn.Middle then btn.Middle:Hide() end
+    if btn.Right then btn.Right:Hide() end
+    for _, getter in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetHighlightTexture", "GetDisabledTexture" }) do
+      local tex = btn[getter] and btn[getter](btn)
+      if tex then tex:SetAlpha(0) end
+    end
+    local fill = btn:CreateTexture(nil, "BACKGROUND")
+    fill:SetAllPoints()
+    fill:SetColorTexture(0.16, 0.16, 0.2, 1)
+    local edge = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+    edge:SetPoint("TOPLEFT", -1, 1)
+    edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    edge:SetColorTexture(0.30, 0.27, 0.12, 1)
+    btn:HookScript("OnEnter", function() fill:SetColorTexture(0.24, 0.23, 0.14, 1) end)
+    btn:HookScript("OnLeave", function() fill:SetColorTexture(0.16, 0.16, 0.2, 1) end)
+    btn:HookScript("OnMouseDown", function() fill:SetColorTexture(0.32, 0.30, 0.12, 1) end)
+    btn:HookScript("OnMouseUp", function() fill:SetColorTexture(0.24, 0.23, 0.14, 1) end)
+    local fs = btn:GetFontString()
+    if fs then fs:SetTextColor(1, 1, 1) end
+  end
+
   local function CreateDivider(yOffset)
     local line = dialog:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(0.85, 0.85, 0.9, 0.14)
+    line:SetColorTexture(1, 0.96, 0.41, 0.12)
     line:SetPoint("TOPLEFT", 20, yOffset)
     line:SetPoint("TOPRIGHT", -20, yOffset)
     line:SetHeight(1)
@@ -455,21 +484,21 @@ local function CreateSettingsDialog()
   disableDelveLabel:SetText("Disable Delve Functionality")
   disableDelveLabel:SetTextColor(1, 1, 1, 1)
 
-  CreateDivider(-160)
+  CreateDivider(-184)
   
   -- Profile and Detected Tanks display
   local profileLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  profileLabel:SetPoint("TOPLEFT", 20, -180)
+  profileLabel:SetPoint("TOPLEFT", 20, -202)
   profileLabel:SetText("Profile: " .. UnitClass("player") .. " - " .. GetProfileType())
-  profileLabel:SetTextColor(0.8, 1.0, 0.8)
+  profileLabel:SetTextColor(1, 0.96, 0.41)
   
   local tanksLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  tanksLabel:SetPoint("TOPLEFT", 20, -200)
+  tanksLabel:SetPoint("TOPLEFT", 20, -222)
   tanksLabel:SetText("Detected Tanks:")
   tanksLabel:SetTextColor(0.9, 0.9, 0.9)
     -- Detected tanks frame container
   local tanksFrame = CreateFrame("Frame", nil, dialog)
-  tanksFrame:SetPoint("TOPLEFT", 20, -220)
+  tanksFrame:SetPoint("TOPLEFT", 20, -242)
   tanksFrame:SetSize(300, 60)
     -- Update label based on profile type
   local function UpdateTanksLabel()
@@ -483,7 +512,7 @@ local function CreateSettingsDialog()
   
   -- Detected Tanks display (with class colors)
   local tanksDisplay = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  tanksDisplay:SetPoint("TOPLEFT", 150, -200)
+  tanksDisplay:SetPoint("TOPLEFT", 150, -222)
   tanksDisplay:SetMaxLines(2)
   
   -- Update tanks display function
@@ -504,16 +533,16 @@ local function CreateSettingsDialog()
   end
   
   -- Quick Select Label
-  CreateDivider(-225)
+  CreateDivider(-248)
 
   local quickLabel = dialog:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-  quickLabel:SetPoint("TOPLEFT", 20, -240)
+  quickLabel:SetPoint("TOPLEFT", 20, -262)
   quickLabel:SetText("Quick Select:")
   quickLabel:SetTextColor(0.9, 0.9, 0.9)
 
   -- Quick Select Buttons
   local quickBtn1 = CreateFrame("Button", nil, dialog, "GameMenuButtonTemplate")
-  quickBtn1:SetPoint("TOPLEFT", 20, -260)
+  quickBtn1:SetPoint("TOPLEFT", 20, -284)
   quickBtn1:SetSize(120, 22)
   quickBtn1:Hide()
 
@@ -643,11 +672,8 @@ local function CreateSettingsDialog()
     SetPreferredTank(nil)
   end)
   
-  -- Apply appropriate style: ELVUI if available, otherwise Blizzard-like
-  if IsElvUILoaded() then
-    ApplyElvUIStyle(dialog)
-  else
-    ApplyBlizzardStyle(dialog)
+  for _, btn in ipairs({ quickBtn1, quickBtn2, targetBtn, okBtn, clearBtn }) do
+    StyleButton(btn)
   end
 
   return dialog

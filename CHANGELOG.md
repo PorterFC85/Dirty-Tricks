@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## 2.1.1 - 2026-10-13
+
+This release updates compatibility for patch 12.1.5 and modernizes the settings dialog.
+
+### Changed
+- Updated addon interface metadata for patch 12.1.5.
+- Restyled the settings dialog with a flat dark panel, accent title bar, and flat buttons.
+- Bumped addon version references to `2.1.1`.
+
+### Fixed
+- Fixed settings dialog dividers overlapping the checkboxes.
+
 ## 2.1.0 - 2026-08-11
 
 This release updates compatibility for patch 12.1.0 and adds a default-off Delve functionality toggle.
